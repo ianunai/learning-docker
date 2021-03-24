@@ -56,3 +56,38 @@ Use the following command, after performing a tag to push the image to the regis
 `docker push <username>/<repository>`.  
 If no tag is specified, Docker reverts to using `latest` for the image tag.
 
+## Persisting data
+
+Data can be persisted across multiple container runs for a given image using volumes.
+
+### Using named volume
+
+#### Steps
+
+1. Create a volume in Docker called `todo-db` using  
+`docker volume create todo-db`.
+
+2. Run the container again, with the `-v` flag to include volume mount:  
+`docker run -dp 3000:3000 -v todo-db:/etc/todos getting-started`.  
+We use the named volume `todo-db` and mount it to `/etc/todos` which captures all files created at the path.
+
+#### Inspecting the volume
+
+Running `docker volume inspect todo-db` returns details about the given volume. The `Mountpoint` is the actual location on the disk where the data is stored.
+
+Example:
+```json
+[
+    {
+        "CreatedAt": "2021-03-24T19:37:33Z",
+        "Driver": "local",
+        "Labels": {},
+        "Mountpoint": "/var/lib/docker/volumes/todo-db/_data",
+        "Name": "todo-db",
+        "Options": {},
+        "Scope": "local"
+    }
+]
+```
+
+While running in Docker Desktop, the Docker commands are actually running inside a small VM on the machine. If we wanted to look at the actual contents of the Mountpoint directory, we would need to first get inside of the VM.
