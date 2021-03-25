@@ -91,3 +91,27 @@ Example:
 ```
 
 While running in Docker Desktop, the Docker commands are actually running inside a small VM on the machine. If we wanted to look at the actual contents of the Mountpoint directory, we would need to first get inside of the VM.
+
+### Using bind mounts
+
+Bind mounts, in comparison to `Volume`, give the end user control over the exact mountpoint on the host.
+
+#### How To
+
+The example uses a container running in dev-mode, i.e., a container supporting a development workflow.
+
+Start by running the following command:  
+```shell script
+docker run -dp 3000:3000 \
+    -w /app -v "$(pwd):/app" \
+    node:12-alpine \
+    sh -c "yarn install && yarn run dev"
+``` 
+
+1. `-dp 3000:3000` - The `-d` flag allows the container to run in detached mode. The `-p` flag maps the port 3000 of the container to port 3000 of the host.
+2. `-w /app` - Sets the "working directory", or the current directory that the command will run from.
+3. `-v "$(pwd):/app"` - bind mount the current directory from the host in the container into the `/app` directory on the container.
+4. `node:12-alpine` - base image to use
+5. `sh -c "yarn install && yarn run dev"` - install all dependencies, including dev (since the `--production` flag from Dockerfile is not included) and run the Node.js app using `yarn run dev`.
+
+Using bind mounts is very common for local development setups. The advantage is that the dev machine doesn't need to have all the build tools and environments installed.
