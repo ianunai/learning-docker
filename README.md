@@ -358,3 +358,7 @@ In this example, we use one stage (called `build`) to perform the actual Java bu
 
 ### Next Steps
 
+#### Container Orchestration
+
+Using Kubernetes, Docker Swarm, ECS, and so on allows us to run and manage applications more effectively across multiple machines and clusters.
+
