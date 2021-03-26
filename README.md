@@ -295,3 +295,66 @@ Issuing `docker-compose down` tears down the running application stack. By defau
 `docker-compose down --volumes`.
 
 ### Best Practices for Image Building
+
+#### Image Scanning
+
+Image scanning can be done through Docker CLI using [Snyk](http://snyk.io/),  
+`docker scan <image name>`.  
+Apart from scanning images through Docker CLI, Docker Hub can also be configured to perform image scans.
+
+#### Image Layering
+
+Using `docker image history`, we can view the layers that went in to building an image.
+
+For example,  
+```shell script
+$ docker image history getting-started
+IMAGE          CREATED       CREATED BY                                      SIZE      COMMENT
+6222c93a09ea   3 hours ago   CMD ["node" "src/index.js"]                     0B        buildkit.dockerfile.v0
+<missing>      3 hours ago   COPY . . # buildkit                             6.69MB    buildkit.dockerfile.v0
+<missing>      3 hours ago   RUN /bin/sh -c yarn install --production # b…   85.2MB    buildkit.dockerfile.v0
+<missing>      3 hours ago   COPY package.json yarn.lock ./ # buildkit       180kB     buildkit.dockerfile.v0
+<missing>      3 hours ago   WORKDIR /app                                    0B        buildkit.dockerfile.v0
+<missing>      2 weeks ago   /bin/sh -c #(nop)  CMD ["node"]                 0B        
+<missing>      2 weeks ago   /bin/sh -c #(nop)  ENTRYPOINT ["docker-entry…   0B        
+<missing>      2 weeks ago   /bin/sh -c #(nop) COPY file:238737301d473041…   116B      
+<missing>      2 weeks ago   /bin/sh -c apk add --no-cache --virtual .bui…   7.62MB    
+<missing>      2 weeks ago   /bin/sh -c #(nop)  ENV YARN_VERSION=1.22.5      0B        
+<missing>      2 weeks ago   /bin/sh -c addgroup -g 1000 node     && addu…   75.7MB    
+<missing>      2 weeks ago   /bin/sh -c #(nop)  ENV NODE_VERSION=12.21.0     0B        
+<missing>      4 weeks ago   /bin/sh -c #(nop)  CMD ["/bin/sh"]              0B        
+<missing>      4 weeks ago   /bin/sh -c #(nop) ADD file:7eeea546ecde7a036…   5.61MB    
+```
+
+Adding the `--no-trunc` flag allows us to view the complete output of the above command.
+
+#### Layer Caching
+
+Remember this - **once a layer changes, all downstream layers have to be recreated as well**.
+
+#### Multi-stage Builds
+
+Multi-stage builds are an incredibly powerful tool to help use multiple stages to create an image. There are several advantages to them:
+
+* Separate build-time dependencies from runtime dependencies
+* Reduce overall image size by shipping only what your app needs to run
+
+##### Maven/Tomcat Example
+
+When building Java-based applications, a JDK is needed to compile the source code to Java bytecode. However, that JDK isn't needed in production. Also, we might be using tools like Maven or Gradle to help build the app. Those also aren't needed in our final image. Multi-stage builds help.
+
+Example:  
+```dockerfile
+FROM maven AS build
+WORKDIR /app
+COPY . .
+RUN mvn package
+
+FROM tomcat
+COPY --from=build /app/target/file.war /usr/local/tomcat/webapps 
+```
+
+In this example, we use one stage (called `build`) to perform the actual Java build using Maven. In the second stage (starting at `FROM tomcat`), we copy in files from the `build` stage. The final image is only the last stage being created (which can be overridden using the `--target` flag).
+
+### Next Steps
+
