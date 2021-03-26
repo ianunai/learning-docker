@@ -2,6 +2,8 @@
 
 ## Getting Started
 
+Tutorial available [here](https://docs.docker.com/get-started/).
+
 ### Building an image
 
 Steps to building an image include:
@@ -115,3 +117,181 @@ docker run -dp 3000:3000 \
 5. `sh -c "yarn install && yarn run dev"` - install all dependencies, including dev (since the `--production` flag from Dockerfile is not included) and run the Node.js app using `yarn run dev`.
 
 Using bind mounts is very common for local development setups. The advantage is that the dev machine doesn't need to have all the build tools and environments installed.
+
+### Multi-Container Apps
+
+Remember this - in general, each container should do one thing and do it well.  
+
+Possible reasons:
+
+* Front-ends and APIs might need scaling differently than databases in the future
+* Separate containers allow version control in isolation
+* Allows ease in transition to production, where the database may be a managed service
+* Running multiple processes on a container requires a process manager, thereby increasing the complexity of container start-up and shut-down  
+
+#### Container Networking
+
+Remember this - **If two containers are on the same network, they can talk to each other. If they aren't, they can't.**
+
+
+#### Starting a mySQL container
+
+1.We will use a network in Docker and attach the running containers to the network:  
+`docker network create todo-app`
+
+2.Starting a mySQL container and attaching it to the network:
+```shell script
+docker run -d \
+    --network todo-app --network-alias mysql \
+    -v todo-mysql-data:/var/lib/mysql \
+    -e MYSQL_ROOT_PASSWORD=secret \
+    -e MYSQL_DATABASE=todos \
+    mysql:5.7
+```
+**Notes:**  
+  * We are mapping a volume `todo-mysql-data` that we haven't created, however Docker recognizes that the user needs a named volume and creates one automatically.
+  * The `-e` fkag stands for environment variables, mySQL container requires some environment varaibles, mainly the root user password as well as the database name.  
+
+3.To verify whether the container is running, connect using the following command:  
+`docker exec -it <mysql-container-id> mysql -p`
+
+Viewing the databases should display the `todos` database as follows:
+
+```
+mysql> SHOW DATABASES;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| sys                |
+| todos              |
++--------------------+
+5 rows in set (0.00 sec)
+```
+
+#### Connecting to the mySQL container
+
+We will make use of the `nicolaka/netshoot` container which ships with various tools to assist with troubleshooting or debugging networking issues.
+
+1.Start by running the `netshoot` container:  
+`docker run -it --network todo-app nicolaka/netshoot`
+2.Inside the container, we're going to use the `dig` command, which is a useful DNS tool. We're going to look up the IP address for the hostname `mysql`.
+
+```shell script
+ $ dig mysql
+
+; <<>> DiG 9.16.11 <<>> mysql
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 16175
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;mysql.				IN	A
+
+;; ANSWER SECTION:
+mysql.			600	IN	A	172.18.0.2
+
+;; Query time: 3 msec
+;; SERVER: 127.0.0.11#53(127.0.0.11)
+;; WHEN: Thu Mar 25 16:51:13 UTC 2021
+;; MSG SIZE  rcvd: 44
+```
+
+Although `mysql` is not a valid hostname, `dig` resolves the `--network-alias mysql` to an IP address found in the `ANSWER SECTION:`.
+The advantage of using `--network-alias` is that containers in a network can refer to the alias in order to connect to that container.
+
+#### Running the app with mySQL container
+
+Run the following command:  
+```shell script
+docker run -dp 3000:3000 \
+  -w /app -v "$(pwd):/app" \
+  --network todo-app \
+  -e MYSQL_HOST=mysql \
+  -e MYSQL_USER=root \
+  -e MYSQL_PASSWORD=secret \
+  -e MYSQL_DB=todos \
+  node:12-alpine \
+  sh -c "yarn install && yarn run dev"
+```
+
+**Note:**
+
+* `--network todo-app` tells the container to use the `todo-app` network created previously, on which the mySQL container is running.
+* `-e` flag is used to specify environment variables by the container, followed by the environment variable's key-value pair.
+
+In the next section, we focus on using Docker Compose to manage multiple deployments in Docker more conveniently and efficiently.
+
+### Using Docker Compose
+
+Docker Compose is a tool that was developed to help define and share multi-container applications. 
+With Compose, we can create a YAML file to define the services and with a single command, can spin everything up or tear it all down.
+
+#### Installing Docker Compose
+
+Available with Docker Desktop, can run the following command to verify:  
+`$ docker-compose version`
+
+#### Creating a Docker Compose File
+
+Creating a `docker-compose.yaml` at the project root and filling it resulting in:
+
+```yaml
+version: "3.7"
+
+services:
+  app:
+    image: node:12-alpine
+    command: sh -c "yarn install && yarn run dev"
+    ports:
+      - 3000:3000
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_USER: root
+      MYSQL_PASSWORD: secret
+      MYSQL_DB: todos
+
+  mysql:
+    image: mysql:5.7
+    volumes:
+      - todo-mysql-data:/var/lib/mysql
+    environment: 
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_DATABASE: todos
+
+volumes:
+  todo-mysql-data:
+```
+
+**Notes:**
+1. The `version` is for the schema version for Docker Compose, it's advised to go with the latest version.
+2. `services` are used to define the services in the application.
+3. The name for a service, such as `app` or `mysql` also ends up being used by Docker as a network alias.
+4. Docker compose can detect bind mounts and allows relative paths, however, it does not create a named volume unless it is defined, unlike docker CLI. Hence, we explicitly define it under `volumes`.
+
+#### Running the Application Stack
+
+1. Application stack can be run using the `docker-compose up command`:  
+`docker-compose up -d` (the `-d` flag ensures it runs in the background).  
+By default, `docker-compose` creates a network for the application stack.
+
+2. Logs can be viewed using:  
+`docker-compose logs -f`.  
+  In order to view logs for a service, specify the service name, as:  
+  `docker-compose logs -f app` or `docker-compose logs -f mysql`
+  
+3. The containers spawned using `docker-compose` have the following nomenclature:  
+`<project-name>_<service-name>_<replica-number>`.
+
+#### Removing the Deployed Stack
+
+Issuing `docker-compose down` tears down the running application stack. By default, the volumes are not deleted when this command is run. In order to remove the volume, we need to include `--volumes` flag to the command:  
+`docker-compose down --volumes`.
+
+### Best Practices for Image Building
